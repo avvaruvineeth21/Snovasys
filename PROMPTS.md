@@ -17,4 +17,33 @@ This document details interactions with AI code generation tools during the deve
   2. Redesigned the architecture to strict **Double-Entry Accounting**. Created two dedicated system clearing accounts (`SYSTEM_CASH_INFLOW` and `SYSTEM_CASH_OUTFLOW`). Every transaction writes at least two balanced ledger postings ($\sum \text{debits} - \sum \text{credits} = 0$).
   3. Added SQL CHECK constraints `CHECK (balance + overdraft_limit >= 0)` and triggers preventing updates or deletions on ledger rows.
 - **Commit reference:**
-  Commit `f4e191a` (Day 1: `feat(core): initialize double-entry schema, SQLite WAL, and base models`)
+  Commit `e68205d` (Day 1: `feat(core): initialize double-entry schema, SQLite WAL, and base models`)
+
+---
+
+### Entry 2 — November 1, 2026
+- **What I asked the tool to do:**
+  Implement an idempotency service with an `idempotency_keys` table to guarantee that retried transfer requests do not execute twice.
+- **What it produced (Money / Concurrency Logic):**
+  The model provided a simple middleware that checked:
+  ```javascript
+  const existing = db.prepare('SELECT response_json FROM idempotency_keys WHERE key = ?').get(key);
+  if (existing) {
+    return res.json(JSON.parse(existing.response_json));
+  }
+  // Proceed with transaction...
+  const result = await executeTransfer(...);
+  db.prepare('INSERT INTO idempotency_keys (key, response_json) VALUES (?, ?)').run(key, JSON.stringify(result));
+  return res.json(result);
+  ```
+- **What was specifically wrong with it (Critical Concurrency & Replay Vulnerability):**
+  1. *In-Flight Race Window:* If two identical requests with the same idempotency key arrive within 5ms of each other (e.g., an aggressive HTTP client retry or rapid double-click before network ACK), Request 2 queries the database while Request 1 is still in flight. Because Request 1 has not yet inserted the key into the database, Request 2 sees no record and proceeds to execute the transfer a second time! The money is transferred twice.
+  2. *Parameter Mismatch Attack:* The model's code did not validate the request body against the key. An attacker could use a key from a $1 transfer and resubmit it with a $10,000 transfer, or replay a vendor payment to a personal account.
+- **What I did instead:**
+  1. Implemented a three-state machine for idempotency keys: `PROCESSING`, `COMPLETED`, and `FAILED`.
+  2. When Request 1 arrives, it immediately registers the key as `PROCESSING` inside the database.
+  3. If Request 2 arrives while Request 1 is still `PROCESSING`, Request 2 does *not* execute; instead, it subscribes to an async condition event (`inFlightEvents.once('completed:' + key)`) and awaits Request 1's completion.
+  4. Implemented canonical request payload hashing: `request_hash = SHA256(path + ':' + JSON.stringify(sortedBody))`. If a request attempts to reuse a key with altered parameters, it is immediately rejected with HTTP `422 Unprocessable Entity`.
+  5. Added `duplicate_count` tracking in `idempotency_keys` to prove to auditors which requests were intercepted replays.
+- **Commit reference:**
+  Commit `3c8d92b` (Day 2: `feat(idempotency): implement idempotency engine with in-flight lock and replay tracking`)
