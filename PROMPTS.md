@@ -46,4 +46,41 @@ This document details interactions with AI code generation tools during the deve
   4. Implemented canonical request payload hashing: `request_hash = SHA256(path + ':' + JSON.stringify(sortedBody))`. If a request attempts to reuse a key with altered parameters, it is immediately rejected with HTTP `422 Unprocessable Entity`.
   5. Added `duplicate_count` tracking in `idempotency_keys` to prove to auditors which requests were intercepted replays.
 - **Commit reference:**
-  Commit `3c8d92b` (Day 2: `feat(idempotency): implement idempotency engine with in-flight lock and replay tracking`)
+  Commit `ee4d31d` (Day 2: `feat(idempotency): implement idempotency engine with in-flight lock and replay tracking`)
+
+---
+
+### Entry 3 — November 2, 2026
+- **What I asked the tool to do:**
+  Implement resource locking for multi-account transfers to prevent race conditions during concurrent money movement.
+- **What it produced (Money / Concurrency Logic):**
+  The model created an asynchronous keyed mutex with an `acquireLock(accountId)` helper, and locked accounts sequentially in the transfer service:
+  ```javascript
+  async function executeTransfer({ sourceAccountId, destinationAccountId, amount }) {
+    const unlockSource = await lockService.acquire(sourceAccountId);
+    const unlockDest = await lockService.acquire(destinationAccountId);
+    try {
+      // Execute transfer inside transaction...
+    } finally {
+      unlockDest();
+      unlockSource();
+    }
+  }
+  ```
+- **What was specifically wrong with it (Deadlock Vulnerability):**
+  This is the textbook Dining Philosophers deadlock flaw.
+  If User A transfers $50 to User B at the exact same millisecond that User B transfers $50 to User A:
+  - Thread 1 acquires `acc_alice` and requests `acc_bob`.
+  - Thread 2 acquires `acc_bob` and requests `acc_alice`.
+  Both threads hang indefinitely waiting on each other's lock. Under heavy production load, connection pools exhaust and the service crashes.
+- **What I did instead:**
+  1. Implemented Canonical Lexicographical Lock Ordering (Dijkstra's Resource Hierarchy).
+  2. Replaced sequential locking with `lockService.withLocks([sourceAccountId, destinationAccountId], callback)`.
+  3. Inside `acquireMany(keys)`:
+     ```javascript
+     const uniqueSortedKeys = [...new Set(keys.filter(Boolean))].sort();
+     ```
+     Locks are *always* acquired in strictly sorted lexicographical order (`acc_alice` is always locked before `acc_bob`, regardless of transfer direction).
+  4. Guaranteed deadlock impossibility across any number of concurrent bi-directional transfers.
+- **Commit reference:**
+  Commit `7b140ae` (Day 3: `feat(concurrency): add deterministic two-phase locking and atomic money movements`)
