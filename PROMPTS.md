@@ -83,4 +83,36 @@ This document details interactions with AI code generation tools during the deve
      Locks are *always* acquired in strictly sorted lexicographical order (`acc_alice` is always locked before `acc_bob`, regardless of transfer direction).
   4. Guaranteed deadlock impossibility across any number of concurrent bi-directional transfers.
 - **Commit reference:**
-  Commit `7b140ae` (Day 3: `feat(concurrency): add deterministic two-phase locking and atomic money movements`)
+  Commit `0be52b6` (Day 3: `feat(concurrency): add deterministic two-phase locking and atomic money movements`)
+
+---
+
+### Entry 4 — November 3, 2026
+- **What I asked the tool to do:**
+  Log refused transactions (insufficient funds, account frozen, overdraft exceeded) into the audit statement so that refused attempts appear alongside debits and credits as required by the specification.
+- **What it produced (Money Integrity / Audit Trail Flaw):**
+  The model wrapped the transaction check and refusal recording directly inside `runInTransaction`:
+  ```javascript
+  return runInTransaction(db, (txDb) => {
+    const account = txDb.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId);
+    if (amount > account.balance + account.overdraft_limit) {
+      recordRefusal(txDb, { accountId, attemptedAmount: amount, reason: 'INSUFFICIENT_FUNDS', ... });
+      throw new LedgerError('Withdrawal refused: Insufficient funds.', 400);
+    }
+    // Debit account...
+  });
+  ```
+- **What was specifically wrong with it (Audit Deletion Flaw):**
+  When `LedgerError` is thrown, `runInTransaction` catches the error and executes `txDb.exec('ROLLBACK')`.
+  Because `recordRefusal` was executed on `txDb` inside that very same transaction, the `ROLLBACK` completely wiped out the refusal row from SQLite!
+  As a result:
+  - The refusal was never saved.
+  - The customer statement showed zero record of the attempted overdraft.
+  - Auditors could not see who attempted to overdraw the account.
+  This directly violated Requirement 8 ("a per-account statement: every debit, every credit, and every refused attempt").
+- **What I did instead:**
+  1. Decoupled the refusal audit log from the money-movement rollback boundary.
+  2. While holding the account's mutex lock, the system checks account balances and statuses. If business rules are violated, it records and commits the refusal record into `refused_transactions` outside the rolled-back money movement block.
+  3. Verified via automated test `tests/concurrency_race.test.js`: firing 10 concurrent requests of $100 against a $100 balance asserts that exactly 1 succeeds and all 9 refused attempts are permanently logged and returned in the statement.
+- **Commit reference:**
+  Commit `a283e5f` (Day 4: `feat(ledger): per-account statements, immutable refusal audit, and RBAC`)
