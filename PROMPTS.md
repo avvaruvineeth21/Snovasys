@@ -115,4 +115,36 @@ This document details interactions with AI code generation tools during the deve
   2. While holding the account's mutex lock, the system checks account balances and statuses. If business rules are violated, it records and commits the refusal record into `refused_transactions` outside the rolled-back money movement block.
   3. Verified via automated test `tests/concurrency_race.test.js`: firing 10 concurrent requests of $100 against a $100 balance asserts that exactly 1 succeeds and all 9 refused attempts are permanently logged and returned in the statement.
 - **Commit reference:**
-  Commit `a283e5f` (Day 4: `feat(ledger): per-account statements, immutable refusal audit, and RBAC`)
+  Commit `0e56d81` (Day 4: `feat(ledger): per-account statements, immutable refusal audit, and RBAC`)
+
+---
+
+### Entry 5 — November 4, 2026
+- **What I asked the tool to do:**
+  Implement a tamper-evident cryptographic hash chain on `ledger_entries` so an auditor can mathematically prove that no historical rows have been altered or deleted.
+- **What it produced:**
+  The model generated a function that computed `SHA256(prevHash + entry.amount + entry.account_id)` and a verification script that looped through rows:
+  ```javascript
+  function verifyChain(db) {
+    const rows = db.prepare('SELECT * FROM ledger_entries').all();
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].previous_hash !== rows[i - 1].entry_hash) return false;
+    }
+    return true;
+  }
+  ```
+- **What was specifically wrong with it (Security / Sequence Gap Exploit):**
+  1. *Omission of Sequence Number & Identifiers:* The hash did not bind the entry's unique ID, transaction ID, sequence number, resulting balance, or timestamp. An attacker could swap two ledger entries or duplicate a credit without invalidating the hash formula if the amounts were identical.
+  2. *Sequence Gap Vulnerability:* The query did not order by sequence number (`ORDER BY sequence_number ASC`), nor did it assert sequence contiguity ($seq_n = seq_{n-1} + 1$). If an insider deleted sequence #4 and altered sequence #5's previous_hash pointer, the loop would verify rows [1, 2, 3, 5] as "valid" because it never checked for missing sequence numbers!
+  3. *Empty Ledger Edge Case:* The model did not establish a fixed Genesis block hash pointer, leaving the chain anchor unverified.
+- **What I did instead:**
+  1. Established a fixed 64-character Genesis hash: `0000000000000000000000000000000000000000000000000000000000000000`.
+  2. Structured the cryptographic hash to seal every critical ledger field:
+     `SHA256(previousHash : id : sequenceNumber : transactionId : accountId : entryType : amount : resultingBalance : createdAt)`.
+  3. Rewrote `verifyLedgerChain` to strictly assert:
+     - Sequence contiguity: `entry.sequence_number === expectedSequence`.
+     - Hash pointer integrity: `entry.previous_hash === expectedPreviousHash`.
+     - Full re-computation of SHA-256 hash for every row against raw database values.
+  4. Added `tests/immutability.test.js` to simulate database tampering and verify that sequence gaps and row edits are caught with 100% precision.
+- **Commit reference:**
+  Commit `6d94c12` (Day 5: `feat(integrity): cryptographic SHA-256 hash chaining and reconciliation verifier`)
