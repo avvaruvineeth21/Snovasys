@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LedgerLine — Money Movement with a Ledger You Can Prove</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Navigation Bar -->
+    <header class="navbar">
+      <div class="nav-brand">
+        <div class="logo-mark">LL</div>
+        <div class="logo-text">
+          <span class="brand-title">LedgerLine</span>
+          <span class="brand-subtitle">Proved Ledger & Settlement Engine</span>
+        </div>
+      </div>
+
+      <div class="nav-status" id="systemInvariantBadge">
+        <span class="status-dot pulsing"></span>
+        <span class="status-label">Books Balanced (<span id="invariantSummary">Reconciling...</span>)</span>
+      </div>
+
+      <div class="nav-auth" id="navAuth">
+        <!-- Injected via app.js -->
+      </div>
+    </header>
+
+    <!-- Quick Role Switcher Banner for Evaluators -->
+    <div class="evaluator-strip">
+      <span class="strip-label">⚡ EVALUATOR QUICK ROLES:</span>
+      <div class="role-buttons">
+        <button class="btn-role" onclick="loginPreset('admin')">🔑 Admin (Alex)</button>
+        <button class="btn-role" onclick="loginPreset('alice')">👤 Account Holder (Alice)</button>
+        <button class="btn-role" onclick="loginPreset('bob')">👤 Account Holder (Bob)</button>
+        <button class="btn-role" onclick="loginPreset('auditor')">🛡️ Auditor (Charlie - Read Only)</button>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="main-container">
+      <!-- Login View -->
+      <section id="viewLogin" class="view hidden">
+        <div class="login-card">
+          <h2>Sign in to LedgerLine</h2>
+          <p class="subtitle">Access accounts, move funds, or audit cryptographically sealed ledgers.</p>
+
+          <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+            <div class="form-group">
+              <label for="loginUsername">Username</label>
+              <input type="text" id="loginUsername" required placeholder="admin, alice, bob, or auditor">
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">Password</label>
+              <input type="password" id="loginPassword" required placeholder="••••••••••••">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Sign In</button>
+          </form>
+
+          <div class="login-credentials-helper">
+            <h4>Evaluation Seed Credentials:</h4>
+            <ul>
+              <li><strong>Admin:</strong> <code>admin</code> / <code>AdminPass123!</code></li>
+              <li><strong>Account Holder:</strong> <code>alice</code> / <code>AlicePass123!</code></li>
+              <li><strong>Account Holder:</strong> <code>bob</code> / <code>BobPass123!</code></li>
+              <li><strong>Auditor:</strong> <code>auditor</code> / <code>AuditorPass123!</code></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Authenticated Dashboard View -->
+      <section id="viewDashboard" class="view hidden">
+        <!-- Navigation Tabs -->
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="tabAccounts" onclick="switchTab('tabAccounts')">💳 Accounts & Transfers</button>
+          <button class="tab-btn" data-tab="tabStatement" onclick="switchTab('tabStatement')">📜 Account Statement</button>
+          <button class="tab-btn" data-tab="tabAudit" id="tabAuditBtn" onclick="switchTab('tabAudit')">🛡️ Ledger Proof & Audit</button>
+          <button class="tab-btn" data-tab="tabAdmin" id="tabAdminBtn" onclick="switchTab('tabAdmin')">⚙️ Admin Console</button>
+        </div>
+
+        <!-- Notification Banner -->
+        <div id="toastMessage" class="toast hidden"></div>
+
+        <!-- TAB 1: Accounts & Transfers -->
+        <div id="tabAccounts" class="tab-content active">
+          <div class="dashboard-grid">
+            <!-- Left Column: Accounts List & Balances -->
+            <div class="dash-col">
+              <div class="card">
+                <div class="card-header">
+                  <h3>Your Accounts</h3>
+                  <button class="btn btn-sm btn-outline" onclick="loadDashboardData()">↻ Refresh</button>
+                </div>
+                <div id="accountsList" class="accounts-grid">
+                  <!-- Account cards injected here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Move Money -->
+            <div class="dash-col">
+              <div class="card" id="moneyMovementCard">
+                <div class="card-header">
+                  <h3>Move Money</h3>
+                  <span class="badge badge-secure">🔒 Concurrency Locked</span>
+                </div>
+
+                <div class="sub-tabs">
+                  <button class="sub-tab-btn active" onclick="switchAction('transfer')">Transfer</button>
+                  <button class="sub-tab-btn" onclick="switchAction('deposit')">Deposit</button>
+                  <button class="sub-tab-btn" onclick="switchAction('withdraw')">Withdraw</button>
+                </div>
+
+                <!-- Transfer Form -->
+                <form id="transferForm" onsubmit="handleTransferSubmit(event)">
+                  <div class="form-group">
+                    <label>Source Account (Must Own)</label>
+                    <select id="transferSource" required onchange="updateTransferAvailability()">
+                      <!-- Populated via JS -->
+                    </select>
+                    <small id="sourceBalanceHint" class="form-hint"></small>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Destination Account</label>
+                    <select id="transferDest" required>
+                      <!-- Populated via JS -->
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Amount (USD)</label>
+                    <div class="input-prefix">
+                      <span>$</span>
+                      <input type="number" id="transferAmount" step="0.01" min="0.01" required placeholder="50.00">
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="transferDescription" placeholder="e.g. Vendor Invoice #402">
+                  </div>
+
+                  <div class="form-group">
+                    <div class="label-with-action">
+                      <label>Idempotency Key</label>
+                      <button type="button" class="btn-link" onclick="generateNewIdempotencyKey()">Generate New</button>
+                    </div>
+                    <input type="text" id="transferIdempotencyKey" required class="font-mono">
+                    <small class="form-hint">Guarantees exactly-once execution. Same key never pays twice.</small>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="btnSubmitTransfer">Execute Transfer</button>
+                    <button type="button" class="btn btn-warning" onclick="simulateDoubleSubmit()" title="Fires 2 identical concurrent requests with the same idempotency key at the exact same millisecond">
+                      ⚡ Simulate Double-Click / Race
+                    </button>
+                  </div>
+                </form>
+
+                <!-- Deposit Form -->
+                <form id="depositForm" class="hidden" onsubmit="handleDepositSubmit(event)">
+                  <div class="form-group">
+                    <label>Target Account</label>
+                    <select id="depositAccount" required></select>
+                  </div>
+                  <div class="form-group">
+                    <label>Deposit Amount (USD)</label>
+                    <div class="input-prefix">
+                      <span>$</span>
+                      <input type="number" id="depositAmount" step="0.01" min="0.01" required placeholder="100.00">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="depositDescription" placeholder="External funding">
+                  </div>
+                  <div class="form-group">
+                    <label>Idempotency Key</label>
+                    <input type="text" id="depositIdempotencyKey" required class="font-mono">
+                  </div>
+                  <button type="submit" class="btn btn-success">Execute Deposit</button>
+                </form>
+
+                <!-- Withdrawal Form -->
+                <form id="withdrawForm" class="hidden" onsubmit="handleWithdrawSubmit(event)">
+                  <div class="form-group">
+                    <label>Source Account</label>
+                    <select id="withdrawAccount" required onchange="updateWithdrawalAvailability()"></select>
+                    <small id="withdrawBalanceHint" class="form-hint"></small>
+                  </div>
+                  <div class="form-group">
+                    <label>Withdrawal Amount (USD)</label>
+                    <div class="input-prefix">
+                      <span>$</span>
+                      <input type="number" id="withdrawAmount" step="0.01" min="0.01" required placeholder="50.00">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Description</label>
+                    <input type="text" id="withdrawDescription" placeholder="Cash withdrawal">
+                  </div>
+                  <div class="form-group">
+                    <label>Idempotency Key</label>
+                    <input type="text" id="withdrawIdempotencyKey" required class="font-mono">
+                  </div>
+                  <button type="submit" class="btn btn-danger">Execute Withdrawal</button>
+                </form>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: Per-Account Statement -->
+        <div id="tabStatement" class="tab-content">
+          <div class="card">
+            <div class="card-header statement-header">
+              <div class="statement-title-group">
+                <h3>Per-Account Ledger Statement</h3>
+                <span class="statement-subtitle">Every Debit, Credit, and Refused Attempt with Resulting Running Balances</span>
+              </div>
+              <div class="statement-controls">
+                <label>Select Account:</label>
+                <select id="statementAccountSelect" onchange="loadStatement()">
+                  <!-- Populated via JS -->
+                </select>
+                <div class="statement-filters">
+                  <button class="filter-pill active" onclick="filterStatement('ALL')">All</button>
+                  <button class="filter-pill" onclick="filterStatement('POSTED')">Posted Only</button>
+                  <button class="filter-pill pill-refused" onclick="filterStatement('REFUSED')">Refused Attempts</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="statement-summary-box" id="statementSummaryBox">
+              <!-- Summary of balance, overdraft, total postings, total refusals -->
+            </div>
+
+            <div class="table-responsive">
+              <table class="table statement-table">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>Running Balance</th>
+                    <th>Initiated By</th>
+                    <th>Status / Description</th>
+                    <th>Ledger Hash / Key</th>
+                  </tr>
+                </thead>
+                <tbody id="statementTableBody">
+                  <!-- Statement rows injected here -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: Ledger Proof & Auditor Console -->
+        <div id="tabAudit" class="tab-content">
+          <div class="audit-grid">
+            <!-- Cryptographic Chain Verifier Card -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>🛡️ Cryptographic SHA-256 Ledger Chain</h3>
+                  <span class="subtitle">Mathematical proof of immutability. Detects silent row changes or deletions.</span>
+                </div>
+                <button class="btn btn-primary" onclick="runChainVerification()">🔍 Verify Entire Chain</button>
+              </div>
+
+              <div id="chainVerificationResult" class="chain-status-panel">
+                <p>Click "Verify Entire Chain" to walk the genesis block to head hash.</p>
+              </div>
+
+              <div class="ledger-stream-container">
+                <h4>Recent Ledger Postings (Immutable Chain Stream)</h4>
+                <div id="ledgerEntriesStream" class="chain-stream">
+                  <!-- Stream cards injected here -->
+                </div>
+              </div>
+            </div>
+
+            <!-- Invariant & Replay Audit Column -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <h3>⚖️ Conservation Invariant Proof</h3>
+                  <span class="subtitle">Sum(Customer Balances) = External Inflows - External Outflows</span>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="runReconciliation()">Reconcile Books</button>
+              </div>
+
+              <div id="reconciliationProofBox" class="proof-box">
+                <!-- Mathematical proof breakdown injected here -->
+              </div>
+
+              <hr class="divider">
+
+              <div class="card-header">
+                <div>
+                  <h3>🔁 Idempotency & Replay Audit</h3>
+                  <span class="subtitle">Proof that duplicate requests never pay twice</span>
+                </div>
+              </div>
+
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Status</th>
+                      <th>Duplicates Caught</th>
+                      <th>Initiator</th>
+                      <th>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody id="idempotencyTableBody">
+                    <!-- Idempotency log rows -->
+                  </tbody>
+                </table>
+              </div>
+
+              <hr class="divider">
+
+              <div class="card-header">
+                <div>
+                  <h3>🚫 Refused Attempts Audit Log</h3>
+                  <span class="subtitle">Every rejected overdraft, race overdraw, or unauthorized access attempt</span>
+                </div>
+              </div>
+
+              <div class="table-responsive">
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Account</th>
+                      <th>Attempted</th>
+                      <th>Reason</th>
+                      <th>Initiated By</th>
+                    </tr>
+                  </thead>
+                  <tbody id="refusedTableBody">
+                    <!-- Refusal rows -->
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 4: Administrator Console -->
+        <div id="tabAdmin" class="tab-content">
+          <div class="card">
+            <div class="card-header">
+              <h3>Admin Account Management</h3>
+              <button class="btn btn-primary btn-sm" onclick="openCreateAccountModal()">+ Create New Account</button>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Account #</th>
+                    <th>Owner</th>
+                    <th>Balance</th>
+                    <th>Overdraft Limit</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminAccountsTableBody">
+                  <!-- Injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

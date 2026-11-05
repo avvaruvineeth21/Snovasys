@@ -147,4 +147,4 @@ This document details interactions with AI code generation tools during the deve
      - Full re-computation of SHA-256 hash for every row against raw database values.
   4. Added `tests/immutability.test.js` to simulate database tampering and verify that sequence gaps and row edits are caught with 100% precision.
 - **Commit reference:**
-  Commit `6d94c12` (Day 5: `feat(integrity): cryptographic SHA-256 hash chaining and reconciliation verifier`)
+  Commit `45e9232` (Day 5: `feat(integrity): cryptographic SHA-256 hash chaining and reconciliation verifier`)
