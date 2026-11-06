@@ -210,8 +210,8 @@ All monetary values are sent and returned as **integers in minor units (cents)**
 ### 1. Local Setup
 ```bash
 # Clone the repository
-git clone <repo-url>
-cd Syn
+git clone https://github.com/avvaruvineeth21/Snovasys.git
+cd Snovasys
 
 # Install dependencies
 npm install

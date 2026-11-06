@@ -23,7 +23,7 @@ Avvaru Vineeth (panduvineeth42@gmail.com)
 
 ### GitHub Repository Link
 ```text
-https://github.com/<your-username>/Syn
+https://github.com/avvaruvineeth21/Snovasys
 ```
 *(Ensure repository visibility is set to **Public**)*
 
@@ -65,8 +65,8 @@ The following capabilities are fully built, verified, and backed by automated at
 ### Box 3: How to run it on our machine. The exact commands - we will try them.
 ```bash
 # 1. Clone the repository
-git clone <your-repo-url>
-cd Syn
+git clone https://github.com/avvaruvineeth21/Snovasys.git
+cd Snovasys
 
 # 2. Install dependencies
 npm install
