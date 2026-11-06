@@ -4,7 +4,7 @@ services:
   ledgerline:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.render
     container_name: ledgerline_app
     ports:
       - "3000:3000"
