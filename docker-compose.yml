@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  ledgerline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ledgerline_app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_PATH=/app/data/ledgerline.db
+      - JWT_SECRET=ledgerline-production-secret-key-evaluator-2026
+    volumes:
+      - ledger_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ledger_data:
