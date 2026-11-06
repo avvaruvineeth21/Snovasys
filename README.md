@@ -215,13 +215,21 @@ cd Syn
 
 # Install dependencies
 npm install
+# (On Windows PowerShell if scripts are restricted, run: npm.cmd install)
 
 # Run the automated test suite (all 5 attack and integrity suites)
 npm test
+# (On Windows PowerShell: npm.cmd test)
 
 # Start the application server
 npm start
+# (On Windows PowerShell: npm.cmd start)
 ```
+> [!NOTE]
+> **Windows PowerShell Execution Policy:** If you encounter `File npm.ps1 cannot be loaded because running scripts is disabled`, either use `npm.cmd` (e.g. `npm.cmd start`) or enable script execution for your user session:
+> ```powershell
+> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+> ```
 The server will start at `http://localhost:3000` with seed accounts pre-funded and ready for evaluation.
 
 ### 2. Running with Docker
